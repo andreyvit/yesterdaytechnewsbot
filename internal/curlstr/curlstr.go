@@ -13,12 +13,13 @@ func CurlString(r *http.Request) string {
 		args = append(args, "-X", r.Method)
 	}
 
-	for k, vv := range r.URL.Query() {
+	u := *r.URL
+	for k, vv := range u.Query() {
 		for _, v := range vv {
-			args = append(args, "-d", fmt.Sprintf("'%s=%s'", k, v))
+			args = append(args, "-d", fmt.Sprintf("%s=%s", k, v))
 		}
 	}
-	r.URL.RawQuery = ""
+	u.RawQuery = ""
 
 	for k, vv := range r.Header {
 		for _, v := range vv {
@@ -26,7 +27,7 @@ func CurlString(r *http.Request) string {
 		}
 	}
 
-	args = append(args, r.URL.String())
+	args = append(args, u.String())
 
 	for i, s := range args {
 		args[i] = quote(s)
@@ -35,7 +36,7 @@ func CurlString(r *http.Request) string {
 }
 
 func quote(v string) string {
-	if strings.ContainsAny(v, "'\" $&|;{}") {
+	if strings.ContainsAny(v, "'\" $&|;{}\n") {
 		return "'" + strings.ReplaceAll(strings.ReplaceAll(v, "\\", "\\\\"), "'", "\\'") + "'"
 	} else {
 		return v

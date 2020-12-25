@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"io/ioutil"
 	"log"
 	"os"
@@ -32,11 +33,84 @@ func main() {
 			MarkerTag:       "ytn",
 			SkipTags:        []string{},
 			TrimTagPrefixes: []string{"ytn-"},
+			StickyLinks:     []string{"HN"},
+			TagRenames: map[string]string{
+				"penetration-testing": "pentesting",
+			},
+			Categories: []*Category{
+				{
+					Tags:  []string{"ytn-must"},
+					Title: "MUST READ",
+				},
+				{
+					Tags:  []string{"nifty"},
+					Title: "Nifty-Grifty",
+				},
+				{
+					Tags:  []string{"languages"},
+					Title: "Platforms and Languages",
+				},
+				{
+					Tags:  []string{"library"},
+					Title: "Libraries",
+				},
+				{
+					Tags:  []string{"business"},
+					Title: "Entrepreneurship and Business",
+				},
+				{
+					Tags:  []string{"tech"},
+					Title: "Technologies",
+				},
+				{
+					Tags:  []string{"ai"},
+					Title: "Machine Learning / AI",
+				},
+				{
+					Tags:  []string{"diy"},
+					Title: "DIY",
+				},
+				{
+					Tags:  []string{"tools"},
+					Title: "Tools",
+				},
+				{
+					Tags:  []string{"math"},
+					Title: "Math",
+				},
+				{
+					Tags:  []string{"tutorial"},
+					Title: "Tutorials",
+				},
+				{
+					Tags:  []string{"security"},
+					Title: "Security",
+				},
+				{
+					Tags:  []string{"bignames"},
+					Title: "Big Names",
+				},
+				{
+					Tags:  []string{"nontech"},
+					Title: "Non-Tech",
+				},
+				{
+					Tags:  []string{"kids"},
+					Title: "Kids",
+				},
+				{
+					Tags:  []string{"fun"},
+					Title: "Fun",
+				},
+			},
 		},
 		StateFile: needEnvString("BOT_STATE_PATH"),
 	}
 
-	if s := needEnvString("PINBOARD_MOCK_DATA"); s != "" {
+	flag.BoolVar(&conf.RepublishAll, "repub", false, "republish all articles")
+	flag.Parse()
+
+	if s := needEnvString("PINBOARD_MOCK_DATA"); s != "0" {
 		data, err := ioutil.ReadFile(s)
 		if err != nil {
 			log.Fatalf("** Cannot read file specified by PINBOARD_MOCK_DATA: %v", err)

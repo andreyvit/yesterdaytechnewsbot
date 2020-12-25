@@ -1,2 +1,2 @@
 .env
-_state.json
+_state*.json

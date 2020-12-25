@@ -13,7 +13,10 @@ import (
 type ContentOptions struct {
 	MarkerTag       string
 	SkipTags        []string
+	TagRenames      map[string]string
 	TrimTagPrefixes []string
+	StickyLinks     []string
+	Categories      []*Category
 }
 
 type Post struct {
@@ -21,9 +24,16 @@ type Post struct {
 	Title       string
 	TitleIsLink bool
 	Time        time.Time
+	Category    *Category
 	Tags        []string
-	Description string
+	Description []*Region
 	Links       map[string]string
+	StickyLinks []Link
+}
+
+type Link struct {
+	Key string
+	URL string
 }
 
 const (
@@ -32,7 +42,7 @@ const (
 
 var (
 	hckrnewsRe = regexp.MustCompile(`^https://news.ycombinator.com/item\?id=\d+$`)
-	linkRe     = regexp.MustCompile(`^(\w+): (https?://.*)$`)
+	linkRe     = regexp.MustCompile(`^([A-Za-z0-9_-]+): (https?://.*)$`)
 )
 
 func parsePost(pp *pinboard.Post, opt ContentOptions) (*Post, error) {
@@ -43,8 +53,27 @@ func parsePost(pp *pinboard.Post, opt ContentOptions) (*Post, error) {
 		Links: make(map[string]string),
 	}
 
-	post.Description, post.Links = parseTrailingLinks(pp.Description)
-	post.Tags = parseTags(pp.Tags, opt)
+	desc, links := parseTrailingLinks(pp.Description)
+	post.Links = links
+
+	post.Description = ParseExplicitLinks(strings.TrimSpace(desc), links)
+
+	for _, key := range opt.StickyLinks {
+		if url, ok := links[key]; ok {
+			post.StickyLinks = append(post.StickyLinks, Link{
+				Key: key,
+				URL: url,
+			})
+		}
+	}
+
+	tags := []string(pp.Tags)
+	post.Category = DetermineCategoryByTags(opt.Categories, tags)
+	if post.Category != nil {
+		tags = removeTags(tags, post.Category.Tags)
+	}
+	tags = renameTags(tags, opt.TagRenames)
+	post.Tags = parseTags(tags, opt)
 
 	post.TitleIsLink = strings.HasPrefix(post.URL, "https://news.ycombinator.com/")
 
@@ -78,7 +107,7 @@ func parseTrailingLinks(desc string) (string, map[string]string) {
 	return strings.TrimSpace(strings.Join(lines, "\n")), links
 }
 
-func parseTags(tags pinboard.TagList, opt ContentOptions) []string {
+func parseTags(tags []string, opt ContentOptions) []string {
 	skip := make(map[string]bool)
 	if opt.MarkerTag != "" {
 		skip[opt.MarkerTag] = true
@@ -113,52 +142,72 @@ func buildTelegramMarkdown(p *Post) string {
 	// buf.WriteString(telegram.EscapeReserved(telegram.EscapeForMarkdown(time.Now().Format(time.RFC3339))) + "\n")
 
 	if p.TitleIsLink && p.Title != "" {
-		buf.WriteString(telegram.EscapeReserved(telegramLink(p.Title, p.URL)))
+		buf.WriteString(telegramBold(telegramLink(telegram.Escape(p.Title), p.URL)))
 		buf.WriteByte('\n')
 	} else {
 		if p.Title != "" {
-			buf.WriteString(telegram.EscapeReserved(telegram.EscapeForMarkdown(p.Title)))
+			buf.WriteString(telegramBold(telegram.Escape(p.Title)))
 			buf.WriteByte('\n')
 		}
-		buf.WriteString(telegram.EscapeReserved(telegramLink(prettifyURL(p.URL), p.URL)))
+		buf.WriteString(telegramLink(telegram.Escape(prettifyURL(p.URL)), p.URL))
 		buf.WriteByte('\n')
 	}
-	if p.Description != "" {
+	if d := strings.TrimSpace(buildDescriptionMarkdown(p)); d != "" {
 		buf.WriteByte('\n')
-		buf.WriteString(telegram.EscapeReserved(strings.TrimSpace(buildDescriptionMarkdown(p))))
+		buf.WriteString(d)
 		buf.WriteByte('\n')
 	}
 	return buf.String()
 }
 
+func telegramBold(text string) string {
+	return fmt.Sprintf("*%s*", text)
+}
+
 func telegramLink(title, url string) string {
-	return fmt.Sprintf("[%s](%s)", telegram.EscapeForMarkdown(title), url)
+	return fmt.Sprintf("[%s](%s)", title, telegram.Escape(url))
 }
 
 func buildDescriptionMarkdown(p *Post) string {
-	desc := strings.TrimSpace(p.Description)
-
 	linksUsed := make(map[string]bool)
+
+	var descBuilder strings.Builder
+	for _, r := range p.Description {
+		if r.PrimaryOccurrance && r.LinkKey != "" {
+			linksUsed[r.LinkKey] = true
+		}
+		if r.PrimaryOccurrance && r.LinkValue != "" {
+			descBuilder.WriteString(telegramLink(telegram.EscapeExceptFormatting(r.Text), r.LinkValue))
+		} else {
+			descBuilder.WriteString(telegram.EscapeExceptFormatting(r.Text))
+		}
+	}
+	desc := descBuilder.String()
 
 	// TODO: format explicit links
 
-	var trailers []string
-	for key, url := range p.Links {
-		if linksUsed[key] {
-			continue
-		}
-		trailers = append(trailers, fmt.Sprintf("[%s](%s)", telegram.EscapeForMarkdown(key), url))
+	var tags []string
+	if p.Category != nil {
+		tags = append(tags, p.Category.PreferredTag())
 	}
-	if len(p.Tags) > 0 {
-		trailers = append(trailers, telegram.EscapeForMarkdown(buildTags(p.Tags)))
+	tags = append(tags, p.Tags...)
+
+	var trailers []string
+	for _, link := range p.StickyLinks {
+		trailers = append(trailers, telegramLink(telegram.Escape(strings.ReplaceAll(link.Key, "_", " ")), link.URL))
+	}
+	if len(tags) > 0 {
+		trailers = append(trailers, telegram.Escape(buildTags(tags)))
 	}
 
-	isMultiParagraph := strings.Contains(p.Description, "\n\n")
+	isMultiParagraph := strings.Contains(desc, "\n\n")
 	if fragment := strings.Join(trailers, " · "); fragment != "" {
 		if isMultiParagraph || isSpecialLine(lastLine(splitLines(desc))) {
 			desc = desc + "\n\n" + fragment
+		} else if desc != "" {
+			desc = desc + "\n" + fragment
 		} else {
-			desc = desc + " " + fragment + "."
+			desc = fragment
 		}
 	}
 
@@ -172,7 +221,7 @@ func buildTags(tags []string) string {
 			buf.WriteByte(' ')
 		}
 		buf.WriteByte('#')
-		buf.WriteString(s)
+		buf.WriteString(strings.ReplaceAll(s, "-", "_"))
 	}
 	return buf.String()
 }
@@ -210,4 +259,38 @@ func prettifyURL(link string) string {
 	link = strings.TrimPrefix(link, "http://")
 	link = strings.TrimPrefix(link, "https://")
 	return link
+}
+
+func makeTagSet(tags []string) map[string]bool {
+	m := make(map[string]bool, len(tags))
+	for _, tag := range tags {
+		m[tag] = true
+	}
+	return m
+}
+
+func removeTags(sourceTags []string, removedTags []string) []string {
+	removedTagSet := makeTagSet(removedTags)
+	result := make([]string, 0, len(sourceTags))
+	for _, tag := range sourceTags {
+		if !removedTagSet[tag] {
+			result = append(result, tag)
+		}
+	}
+	return result
+}
+
+func renameTags(sourceTags []string, renames map[string]string) []string {
+	result := make([]string, 0, len(sourceTags))
+	for _, tag := range sourceTags {
+		if s, ok := renames[tag]; ok {
+			if s == "" {
+				continue
+			} else {
+				tag = s
+			}
+		}
+		result = append(result, tag)
+	}
+	return result
 }

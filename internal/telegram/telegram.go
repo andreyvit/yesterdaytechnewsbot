@@ -78,15 +78,13 @@ type sendMessageResponse struct {
 	Description string      `json:"description"`
 }
 
-func EscapeForMarkdown(s string) string {
+func Escape(s string) string {
 	s = strings.ReplaceAll(s, "*", "\\*")
-	s = strings.ReplaceAll(s, "[", "\\[")
-	s = strings.ReplaceAll(s, "]", "\\]")
 	s = strings.ReplaceAll(s, "`", "\\`")
-	return s
+	return EscapeExceptFormatting(s)
 }
 
-func EscapeReserved(s string) string {
+func EscapeExceptFormatting(s string) string {
 	s = strings.ReplaceAll(s, "\\", "\\\\")
 	s = strings.ReplaceAll(s, "-", "\\-")
 	s = strings.ReplaceAll(s, "+", "\\+")
@@ -96,6 +94,10 @@ func EscapeReserved(s string) string {
 	s = strings.ReplaceAll(s, "~", "\\~")
 	s = strings.ReplaceAll(s, ">", "\\>")
 	s = strings.ReplaceAll(s, "=", "\\=")
+	s = strings.ReplaceAll(s, "(", "\\(")
+	s = strings.ReplaceAll(s, ")", "\\)")
+	s = strings.ReplaceAll(s, "[", "\\[")
+	s = strings.ReplaceAll(s, "]", "\\]")
 	return s
 }
 

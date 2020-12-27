@@ -73,7 +73,7 @@ func (env *Env) handle(pp *pinboard.Post, conf Configuration) error {
 		if conf.RepublishAll {
 			log.Printf("REPUBLISHING:\n%v\n", pp)
 		} else {
-			log.Printf("ALREADY PUBLISHED:\n%v\n", pp)
+			// log.Printf("ALREADY PUBLISHED:\n%v\n", pp)
 			return nil
 		}
 	} else {

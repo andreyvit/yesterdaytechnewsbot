@@ -59,6 +59,14 @@ func main() {
 					Title: "Entrepreneurship and Business",
 				},
 				{
+					Tags:  []string{"ux"},
+					Title: "UX",
+				},
+				{
+					Tags:  []string{"databases"},
+					Title: "Databases",
+				},
+				{
 					Tags:  []string{"tech"},
 					Title: "Technologies",
 				},
